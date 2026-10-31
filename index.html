@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOCTURNE // Atmospheric Psychological Space</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            color: #fff;
+        }
+
+        #webgl-canvas {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        .hud-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 24px;
+        }
+
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 6px;
+            height: 6px;
+            background-color: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.5);
+            letter-spacing: 2px;
+        }
+
+        .instruction-box {
+            background: rgba(5, 5, 5, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 16px;
+            border-radius: 8px;
+            max-width: 350px;
+            pointer-events: auto;
+            backdrop-filter: blur(10px);
+        }
+
+        .instruction-box h2 {
+            font-size: 0.95rem;
+            color: #ef4444;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+
+        .instruction-box p {
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: #94a3b8;
+        }
+
+        .btn-start {
+            margin-top: 12px;
+            background: #ef4444;
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: 'Courier New', Courier, monospace;
+            width: 100%;
+        }
+
+        .btn-start:hover {
+            opacity: 0.85;
+        }
+    </style>
+
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div class="crosshair"></div>
+    <canvas id="webgl-canvas"></canvas>
+
+    <div class="hud-overlay">
+        <div class="top-bar">
+            <div>SUBJECT: 04-DELTA</div>
+            <div>STATUS: EXPLORING ZONE</div>
+            <div>FPS: 60</div>
+        </div>
+
+        <div class="instruction-box" id="uiBox">
+            <h2>NOCTURNE PROTOCOL</h2>
+            <p>Click below to enter the simulation. Use <strong>W, A, S, D</strong> to move through the dark corridors, and move your mouse to look around.</p>
+            <button class="btn-start" id="startBtn">INITIALIZE EXPERIENCE</button>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. SCENE & RENDERER SETUP ---
+        const canvas = document.getElementById('webgl-canvas');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x020205);
+        scene.fog = new THREE.FogExp2(0x020205, 0.08);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 1.7, 0);
+
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        // --- 2. ATMOSPHERIC LIGHTING & FLASHLIGHT ---
+        const ambientLight = new THREE.AmbientLight(0x050811, 0.8);
+        scene.add(ambientLight);
+
+        // Flashlight attached to camera
+        const flashlight = new THREE.SpotLight(0xdff9fb, 3.5, 30, Math.PI / 6, 0.5, 1);
+        flashlight.position.set(0, 0, 0);
+        flashlight.castShadow = true;
+        camera.add(flashlight);
+        scene.add(camera);
+
+        // Target for flashlight
+        const flashlightTarget = new THREE.Object3D();
+        flashlightTarget.position.set(0, 0, -10);
+        camera.add(flashlightTarget);
+        flashlight.target = flashlightTarget;
+
+        // Emergency Flickering Red Light in the Distance
+        const alertLight = new THREE.PointLight(0xef4444, 4, 15);
+        alertLight.position.set(0, 3, -25);
+        scene.add(alertLight);
+
+        // --- 3. ENVIRONMENT & CORRIDORS ---
+        // Floor
+        const floorGeo = new THREE.PlaneGeometry(60, 60);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x0f111a, roughness: 0.9, metalness: 0.1 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Ceiling
+        const ceiling = new THREE.Mesh(floorGeo, floorMat);
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.y = 4;
+        scene.add(ceiling);
+
+        // Procedural Concrete Walls & Pillars
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x1e222d, roughness: 0.8 });
+        
+        for (let i = -30; i <= 30; i += 6) {
+            // Left Wall Pillars
+            const pillarGeo = new THREE.BoxGeometry(1.5, 4, 1.5);
+            const pillarL = new THREE.Mesh(pillarGeo, wallMat);
+            pillarL.position.set(-6, 2, i);
+            pillarL.castShadow = true;
+            pillarL.receiveShadow = true;
+            scene.add(pillarL);
+
+            // Right Wall Pillars
+            const pillarR = new THREE.Mesh(pillarGeo, wallMat);
+            pillarR.position.set(6, 2, i);
+            pillarR.castShadow = true;
+            pillarR.receiveShadow = true;
+            scene.add(pillarR);
+        }
+
+        // --- 4. FIRST-PERSON CONTROLS ---
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let yaw = 0, pitch = 0;
+        const speed = 0.08;
+
+        document.getElementById('startBtn').addEventListener('click', () => {
+            document.body.requestPointerLock();
+            document.getElementById('uiBox').style.display = 'none';
+        });
+
+        document.addEventListener('mousemove', (event) => {
+            if (document.pointerLockElement === document.body) {
+                const sensitivity = 0.002;
+                yaw -= event.movementX * sensitivity;
+                pitch -= event.movementY * sensitivity;
+
+                pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
+
+                camera.rotation.order = 'YXZ';
+                camera.rotation.y = yaw;
+                camera.rotation.x = pitch;
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyW') moveForward = true;
+            if (e.code === 'KeyS') moveBackward = true;
+            if (e.code === 'KeyA') moveLeft = true;
+            if (e.code === 'KeyD') moveRight = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyW') moveForward = false;
+            if (e.code === 'KeyS') moveBackward = false;
+            if (e.code === 'KeyA') moveLeft = false;
+            if (e.code === 'KeyD') moveRight = false;
+        });
+
+        // --- 5. ANIMATION & GAME LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            // Movement calculations
+            const direction = new THREE.Vector3();
+            if (moveForward) direction.z -= 1;
+            if (moveBackward) direction.z += 1;
+            if (moveLeft) direction.x -= 1;
+            if (moveRight) direction.x += 1;
+            direction.normalize();
+
+            if (moveForward || moveBackward || moveLeft || moveRight) {
+                camera.translateX(direction.x * speed);
+                camera.translateZ(direction.z * speed);
+            }
+
+            // Keep inside corridor bounds
+            camera.position.x = Math.max(-5, Math.min(5, camera.position.x));
+            camera.position.z = Math.max(-28, Math.min(28, camera.position.z));
+
+            // Flicker emergency light
+            alertLight.intensity = 2 + Math.sin(Date.now() * 0.01) * 2;
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Window Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+  </html>
+  
